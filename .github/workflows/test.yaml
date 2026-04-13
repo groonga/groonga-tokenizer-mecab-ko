@@ -41,6 +41,9 @@ jobs:
           path: cache
           key: test-ubuntu-ccache-${{ hashFiles('CMakeLists.txt', 'tokenizers/**') }}
           restore-keys: test-ubuntu-ccache-
+      - name: Enable ccache
+        run: |
+          echo "/usr/lib/ccache" >> ${GITHUB_PATH}
       - name: Install build dependencies
         run: |
           sudo apt install -y -V \
