@@ -43,26 +43,75 @@ endif()
 
 find_package(Groonga REQUIRED)
 
-find_program(MECAB_KO_CONFIG "mecab-config" REQUIRED)
-execute_process(
-    COMMAND ${MECAB_KO_CONFIG} --inc-dir
-    COMMAND_ERROR_IS_FATAL ANY
-    OUTPUT_VARIABLE MECAB_KO_INCLUDE_DIRS
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-)
-execute_process(
-    COMMAND ${MECAB_KO_CONFIG} --libs-only-L
-    COMMAND_ERROR_IS_FATAL ANY
-    OUTPUT_VARIABLE MECAB_KO_LIBRARY_DIRS
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-)
-find_library(
-    MECAB_KO_LIBRARY
-    NAMES mecab
-    PATHS ${MECAB_KO_LIBRARY_DIRS}
-    REQUIRED
-    NO_DEFAULT_PATH
-)
+if(DEFINED MECAB_KO_PRIVATE_PREFIX)
+    include(ExternalProject)
+    include(ProcessorCount)
+    ProcessorCount(NPROC)
+    if(NPROC EQUAL 0)
+        set(NPROC 1)
+    endif()
+
+    set(MECAB_KO_INCLUDE_DIRS "${MECAB_KO_PRIVATE_PREFIX}/include")
+    set(MECAB_KO_LIBRARY "${MECAB_KO_PRIVATE_PREFIX}/lib/libmecab.a")
+    set(MECAB_KO_RC_PATH "${MECAB_KO_PRIVATE_PREFIX}/etc/mecabrc")
+    set(MECAB_KO_DIC_DIR
+        "${MECAB_KO_PRIVATE_PREFIX}/lib/mecab/dic/mecab-ko-dic"
+    )
+
+    ExternalProject_Add(
+        mecab_ko_external
+        URL
+            https://bitbucket.org/eunjeon/mecab-ko/downloads/mecab-0.996-ko-0.9.2.tar.gz
+        PREFIX ${CMAKE_BINARY_DIR}/mecab-ko
+        CONFIGURE_COMMAND
+            <SOURCE_DIR>/configure --prefix=${MECAB_KO_PRIVATE_PREFIX}
+            --enable-static --disable-shared --with-pic
+        BUILD_COMMAND make -j${NPROC}
+        INSTALL_COMMAND make install
+        BUILD_IN_SOURCE FALSE
+        BUILD_BYPRODUCTS ${MECAB_KO_LIBRARY}
+    )
+
+    ExternalProject_Add(
+        mecab_ko_dic_external
+        URL
+            https://bitbucket.org/eunjeon/mecab-ko-dic/downloads/mecab-ko-dic-2.1.1-20180720.tar.gz
+        PREFIX ${CMAKE_BINARY_DIR}/mecab-ko-dic
+        DEPENDS mecab_ko_external
+        CONFIGURE_COMMAND
+            sh -c
+            "cd <SOURCE_DIR> && ./autogen.sh && ./configure --prefix=${MECAB_KO_PRIVATE_PREFIX} --with-mecab-config=${MECAB_KO_PRIVATE_PREFIX}/bin/mecab-config --with-dicdir=${MECAB_KO_DIC_DIR}"
+        BUILD_COMMAND
+            ${CMAKE_COMMAND} -E env
+            PATH=${MECAB_KO_PRIVATE_PREFIX}/bin:$ENV{PATH} make -j${NPROC}
+        INSTALL_COMMAND make install
+        COMMAND
+            sed -i "s|^dicdir.*|dicdir = ${MECAB_KO_DIC_DIR}|"
+            ${MECAB_KO_RC_PATH}
+        BUILD_IN_SOURCE TRUE
+    )
+else()
+    find_program(MECAB_KO_CONFIG "mecab-config" REQUIRED)
+    execute_process(
+        COMMAND ${MECAB_KO_CONFIG} --inc-dir
+        COMMAND_ERROR_IS_FATAL ANY
+        OUTPUT_VARIABLE MECAB_KO_INCLUDE_DIRS
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+    execute_process(
+        COMMAND ${MECAB_KO_CONFIG} --libs-only-L
+        COMMAND_ERROR_IS_FATAL ANY
+        OUTPUT_VARIABLE MECAB_KO_LIBRARY_DIRS
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+    find_library(
+        MECAB_KO_LIBRARY
+        NAMES mecab
+        PATHS ${MECAB_KO_LIBRARY_DIRS}
+        REQUIRED
+        NO_DEFAULT_PATH
+    )
+endif()
 
 add_subdirectory(tokenizers)
 
